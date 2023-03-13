@@ -503,6 +503,29 @@ end
     @test occursin("llvm.floor", ir)
 end
 
+if VERSION >= v"1.7"
+@testset "JuliaLang/julia#48097: kwcall inference in the presence of overlay method" begin
+    mod = @eval module $(gensym())
+        using ..GPUCompiler
+        child(; kwargs...) = return
+        function parent()
+            child(; a=1f0, b=1.0)
+            return
+        end
+
+        Base.Experimental.@MethodTable method_table
+        Base.Experimental.@overlay method_table @noinline Core.throw_inexacterror(f::Symbol, ::Type{T}, val) where {T} =
+        return
+    end
+
+    ir = sprint(io->native_code_llvm(io, mod.parent, Tuple{}; debuginfo=:none, method_table=mod.method_table))
+    @test !occursin("jl_invoke", ir)
+    @test !occursin("apply_iterate", ir)
+    @test !occursin("inttoptr", ir)
+    @test occursin("ret void", ir)
+end
+end
+
 ############################################################################################
 
 end

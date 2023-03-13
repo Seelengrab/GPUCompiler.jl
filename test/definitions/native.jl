@@ -7,8 +7,6 @@ end
 
 # create a native test compiler, and generate reflection methods for it
 
-NativeCompilerJob = CompilerJob{NativeCompilerTarget,TestCompilerParams}
-
 # local method table for device functions
 @static if isdefined(Base.Experimental, Symbol("@overlay"))
 Base.Experimental.@MethodTable(method_table)
@@ -16,16 +14,24 @@ else
 const method_table = nothing
 end
 
-GPUCompiler.method_table(@nospecialize(job::NativeCompilerJob)) = method_table
+struct NativeCompilerParams <: AbstractCompilerParams
+    entry_safepoint::Bool
+    method_table
+end
+
+NativeCompilerJob = CompilerJob{NativeCompilerTarget,NativeCompilerParams}
+
+GPUCompiler.method_table(@nospecialize(job::NativeCompilerJob)) = job.params.method_table
 GPUCompiler.can_safepoint(@nospecialize(job::NativeCompilerJob)) = job.params.entry_safepoint
+GPUCompiler.runtime_module(::NativeCompilerJob) = TestRuntime
 
 function native_job(@nospecialize(f_type), @nospecialize(types);
                     kernel::Bool=false, entry_abi=:specfunc, entry_safepoint::Bool=false,
                     always_inline=false, llvm_always_inline=true, jlruntime::Bool=false,
-                    kwargs...)
+                    method_table=method_table, kwargs...)
     source = FunctionSpec(f_type, Base.to_tuple_type(types), kernel)
     target = NativeCompilerTarget(; llvm_always_inline, jlruntime)
-    params = TestCompilerParams(entry_safepoint)
+    params = NativeCompilerParams(entry_safepoint, method_table)
     CompilerJob(target, source, params, entry_abi, always_inline), kwargs
 end
 
